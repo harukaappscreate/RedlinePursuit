@@ -12,7 +12,7 @@ import { PLAYER_CARS } from './car.js';
 import { clamp, lerp } from './util.js';
 
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { camMode: 0, fov: 65, shake: 0, speedFx: true, centerDot: false, cinematic: true, voice: true, quality: 1, master: 0.8, music: 0.6, sfx: 0.9 };
+const DEFAULTS = { camMode: 0, fov: 65, shake: 0, speedFx: true, centerDot: false, mouseLook: 1, mouseSens: 1, mouseInvY: false, mouseReturn: true, cinematic: true, voice: true, quality: 1, master: 0.8, music: 0.6, sfx: 0.9 };
 let settings = { ...DEFAULTS };
 try { const s = JSON.parse(localStorage.getItem('redline-settings') || '{}'); settings = { ...DEFAULTS, ...s }; } catch (e) { /* ignore */ }
 const saveSettings = () => { try { localStorage.setItem('redline-settings', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
@@ -126,6 +126,7 @@ function loop(now) {
   }
   time += dt;
   input.pollPad();
+  if (document.pointerLockElement === canvas && !(lookAllowed() && settings.mouseLook === 2)) document.exitPointerLock();
   handleGlobalKeys();
   const sh = $('sound-hint'); const needHint = audio.ready && audio.ctx.state === 'suspended'; if (sh.classList.contains('hidden') === needHint) sh.classList.toggle('hidden', !needHint);
   if (app === 'game' || app === 'result' || app === 'title' || app === 'menu') {
@@ -134,6 +135,8 @@ function loop(now) {
   if (app === 'game' && game.state !== 'ending' && game.state !== 'result') {
     rig.lookBack = input.k('KeyV', 'PadDown');
   } else rig.lookBack = false;
+  const mh = $('mouse-hint'), needMh = lookAllowed() && settings.mouseLook === 2 && document.pointerLockElement !== canvas;
+  if (mh.classList.contains('hidden') === needMh) mh.classList.toggle('hidden', !needMh);
   if ((app === 'title' || app === 'menu') && game.demo) demoCamera(dt);
   if (app === 'garage') garageSpin(dt);
   const pl = game.player;
@@ -169,7 +172,8 @@ function handleGlobalKeys() {
   }
   if (app === 'game') {
     if (input.hit('KeyC', 'PadY')) { const m = rig.cycle(); settings.camMode = rig.modeIndex; saveSettings(); hud.camLabel(m.label); }
-    if (input.hit('Escape', 'KeyP', 'PadStart') && game.state !== 'ending') pause(true);
+    if ((input.hit('Escape', 'KeyP', 'PadStart') || lockLost) && game.state !== 'ending') { pause(true); if (lockLost) lockPauseAt = performance.now(); }
+    lockLost = false;
     if (input.hit('KeyM')) { settings.music = settings.music > 0 ? 0 : 0.6; audio.applyVolumes(); }
     return;
   }
@@ -201,7 +205,8 @@ const DEFAULT_FOCUS = { result: 'btn-retry', garage: 'btn-start', pause: 'btn-re
 const BACK = {
   settings: () => closeSettings(),
   controls: () => { show('menu'); audio.click(); },
-  pause: () => pause(false),
+  // the Escape that released pointer lock must not immediately resume
+  pause: () => { if (performance.now() - lockPauseAt > 500) pause(false); },
   result: () => backToMenu(),
   garage: () => backToMenu(),
 };
@@ -353,8 +358,33 @@ function startGame() {
 }
 function pause(p) {
   if (p) { app = 'paused'; show('pause'); audio.silence(); audio.click(); }
-  else { app = 'game'; show(null); audio.click(); }
+  else { app = 'game'; show(null); audio.click(); if (settings.mouseLook === 2) lockPointer(); }
 }
+
+// ---------- mouse look (drag, or pointer lock) ----------
+const canvas = renderer.domElement;
+let mouseDrag = false, lockLost = false, lockPauseAt = 0;
+function lookAllowed() { return app === 'game' && game && game.state !== 'ending' && game.state !== 'result'; }
+function lockPointer() {
+  if (!canvas.requestPointerLock || document.pointerLockElement === canvas) return;
+  try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) { /* ignore */ }
+}
+function endDrag() { mouseDrag = false; document.body.classList.remove('mouse-drag'); }
+window.addEventListener('pointerdown', (e) => {
+  if (!lookAllowed() || !settings.mouseLook) return;
+  if (settings.mouseLook === 2) { lockPointer(); return; }
+  if (e.button === 0 || e.button === 2) { mouseDrag = true; document.body.classList.add('mouse-drag'); }
+});
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('blur', endDrag);
+window.addEventListener('mousemove', (e) => {
+  if (!lookAllowed() || !settings.mouseLook) return;
+  const locked = document.pointerLockElement === canvas;
+  if (locked || (mouseDrag && settings.mouseLook === 1)) rig.addLook(e.movementX || 0, e.movementY || 0);
+});
+// losing the lock (Esc, alt-tab) during a race pauses the game
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== canvas && lookAllowed()) lockLost = true; });
+window.addEventListener('contextmenu', (e) => { if (app === 'game') e.preventDefault(); });
 function showResult(r) {
   if (app !== 'game') return;
   app = 'result'; show('result');
@@ -379,6 +409,10 @@ function buildSettings() {
     { k: 'shake', label: 'カメラ揺れ', type: 'sel', vals: [[0, 'OFF'], [1, '弱'], [2, '強']] },
     { k: 'speedFx', label: 'スピードエフェクト (ブラー/FOV変化)', type: 'bool' },
     { k: 'centerDot', label: '酔い止めセンタードット', type: 'bool' },
+    { k: 'mouseLook', label: 'マウス視点操作', type: 'sel', vals: [[0, 'OFF'], [1, 'ドラッグ'], [2, 'マウスロック']] },
+    { k: 'mouseSens', label: 'マウス感度', type: 'range', min: 0.2, max: 3, step: 0.1 },
+    { k: 'mouseInvY', label: 'マウス上下反転', type: 'bool' },
+    { k: 'mouseReturn', label: 'マウス視点を自動で正面に戻す', type: 'bool' },
     { k: 'cinematic', label: 'テイクダウン演出 (スローモーション)', type: 'bool' },
     { k: 'voice', label: '警察無線ボイス (英語)', type: 'bool' },
     { k: 'quality', label: 'グラフィック品質', type: 'sel', vals: [[0, '低'], [1, '中'], [2, '高']] },
@@ -418,6 +452,7 @@ function changed(k) {
   audio.settings = settings; audio.applyVolumes();
   if (k === 'quality') applyQuality();
   if (k === 'camMode' && app !== 'game') rig.setMode(settings.camMode);
+  if (k === 'mouseLook' && !settings.mouseLook) rig.resetLook();
   audio.click();
 }
 let settingsReturn = 'menu';

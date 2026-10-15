@@ -23,10 +23,31 @@ export class CameraRig {
     this.lookBack = false;
     this.cine = null; // cinematic override
     this.orbitT = 0;
+    // mouse look offsets (radians) on top of the automatic camera direction
+    this.lookYaw = 0; this.lookPitch = 0; this.lookIdle = 0;
   }
   get mode() { return CAM_MODES[this.modeIndex].id; }
-  cycle() { this.modeIndex = (this.modeIndex + 1) % CAM_MODES.length; this.snap = true; return CAM_MODES[this.modeIndex]; }
-  setMode(i) { this.modeIndex = i; this.snap = true; }
+  cycle() { this.modeIndex = (this.modeIndex + 1) % CAM_MODES.length; this.snap = true; this.resetLook(); return CAM_MODES[this.modeIndex]; }
+  setMode(i) { this.modeIndex = i; this.snap = true; this.resetLook(); }
+  resetLook() { this.lookYaw = 0; this.lookPitch = 0; this.lookIdle = 0; }
+  // mouse delta in pixels -> yaw/pitch offset
+  addLook(dx, dy) {
+    const s = this.settings;
+    const k = 0.0032 * (s.mouseSens || 1);
+    const fp = this.mode === 'cockpit' || this.mode === 'hood';
+    this.lookYaw = wrapAngle(this.lookYaw - dx * k);
+    if (fp) this.lookYaw = clamp(this.lookYaw, -2.4, 2.4);
+    this.lookPitch = clamp(this.lookPitch + dy * k * (s.mouseInvY ? -1 : 1), fp ? -0.5 : -0.22, fp ? 0.6 : 1.05);
+    this.lookIdle = 0;
+  }
+  updateLook(dt) {
+    this.lookIdle += dt;
+    // drift back behind the car after the mouse has been idle for a moment
+    if (this.settings.mouseReturn && this.lookIdle > 1.2) {
+      this.lookYaw = dampAngle(this.lookYaw, 0, 2.5, dt);
+      this.lookPitch = damp(this.lookPitch, 0, 2.5, dt);
+    }
+  }
   addShake(a) { const k = this.settings.shake; if (!k) return; this.shake = Math.min(1.2, this.shake + a * (k === 2 ? 1 : 0.45)); }
 
   applyCarVisibility(car) {
@@ -51,6 +72,7 @@ export class CameraRig {
     let fovTarget = s.fov;
     if (s.speedFx) fovTarget += clamp((speed - 20) / 70, 0, 1) * 9 + (car.nitroActive ? 5 : 0);
     const mode = this.mode;
+    this.updateLook(dt);
     if (mode === 'chase' || mode === 'far') {
       // follow heading blended with velocity direction for drifts
       let tYaw = car.yaw;
@@ -60,13 +82,17 @@ export class CameraRig {
       const far = mode === 'far';
       const dist = (far ? 9.5 : 6.3) + clamp(speed * 0.012, 0, 1.0);
       const h = far ? 3.4 : 2.05;
-      const tx = car.pos.x - Math.sin(this.yaw) * dist, tz = car.pos.z - Math.cos(this.yaw) * dist;
-      let ty = car.pos.y + h;
+      // mouse look orbits the camera around the car
+      const oYaw = this.yaw + this.lookYaw;
+      const hd = dist * Math.cos(this.lookPitch);
+      const tx = car.pos.x - Math.sin(oYaw) * hd, tz = car.pos.z - Math.cos(oYaw) * hd;
+      let ty = car.pos.y + h + dist * Math.sin(this.lookPitch);
       const gy = this.world.heightAt(tx, tz) + 1.0;
       if (ty < gy) ty = gy;
       if (snap) this.pos.set(tx, ty, tz);
       else { this.pos.x = damp(this.pos.x, tx, 18, dt); this.pos.z = damp(this.pos.z, tz, 18, dt); this.pos.y = damp(this.pos.y, ty, 7, dt); }
-      this.look.set(car.pos.x + Math.sin(this.yaw) * 4, car.pos.y + (far ? 1.3 : 1.15), car.pos.z + Math.cos(this.yaw) * 4);
+      const la = 4 * Math.cos(this.lookPitch);
+      this.look.set(car.pos.x + Math.sin(oYaw) * la, car.pos.y + (far ? 1.3 : 1.15), car.pos.z + Math.cos(oYaw) * la);
       cam.position.copy(this.pos);
       cam.up.set(0, 1, 0);
       cam.lookAt(this.look);
@@ -86,8 +112,9 @@ export class CameraRig {
       cam.position.set(wx, wy, wz);
       let yawL = car.yaw + clamp(car.angVel * 0.12, -0.2, 0.2);
       if (this.lookBack) yawL += Math.PI;
+      yawL += this.lookYaw;
       cam.up.set(0, 1, 0);
-      v1.set(wx + Math.sin(yawL) * 10, wy - Math.tan(this.pitch) * 10 - 0.35, wz + Math.cos(yawL) * 10);
+      v1.set(wx + Math.sin(yawL) * 10, wy - Math.tan(this.pitch + this.lookPitch) * 10 - 0.35, wz + Math.cos(yawL) * 10);
       cam.lookAt(v1);
       this.yaw = car.yaw; this.pos.copy(cam.position);
     }
