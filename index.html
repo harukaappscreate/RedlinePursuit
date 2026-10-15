@@ -140,6 +140,8 @@ button { font-family: inherit; cursor: pointer; }
 #wrongway { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 900; font-family: 'Noto Sans JP'; color: #ff3040; text-shadow: 0 0 20px #f00; animation: blink .5s infinite; }
 #draft { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); font-size: 16px; font-weight: 700; letter-spacing: 0.3em; color: #9fdcff; text-shadow: 0 0 10px #39f; }
 #centerdot { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: rgba(255,255,255,0.8); box-shadow: 0 0 0 2px rgba(0,0,0,0.5); }
+#mouse-hint { position: absolute; top: 64%; left: 50%; transform: translateX(-50%); font-family: 'Noto Sans JP'; font-size: 13px; background: rgba(0,0,0,0.55); padding: 5px 14px; opacity: 0.85; }
+body.mouse-drag { cursor: grabbing; }
 #camlabel { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); font-family: 'Noto Sans JP'; font-weight: 700; font-size: 16px; opacity: 0; background: rgba(0,0,0,0.5); padding: 6px 16px; }
 .rfade { animation: rfade 4s forwards; }
 @keyframes rfade { 0% { opacity: 0; } 8% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
@@ -210,12 +212,13 @@ button:focus { outline: none; }
     <div id="draft" class="hidden">SLIPSTREAM</div>
     <div id="centerdot" class="hidden"></div>
     <div id="camlabel"></div>
+    <div id="mouse-hint" class="hidden">クリックでマウス視点（ESC で解除）</div>
     <div id="radio" class="hidden"></div>
     <div id="abilities" class="hidden">
       <div class="ab" id="ab-spike"><kbd>Q</kbd><b>SPIKE</b><span>スパイク設置</span></div>
       <div class="ab" id="ab-emp"><kbd>E</kbd><b>EMP</b><span>長押しでロック</span><div id="emp-lockbar"><div id="emp-lock"></div></div></div>
     </div>
-    <div id="controls-hint">W/S 加速・ブレーキ　A/D ステア　SPACE ドリフト　SHIFT ニトロ　C 視点　V 後方　R リセット　ESC ポーズ</div>
+    <div id="controls-hint">W/S 加速・ブレーキ　A/D ステア　SPACE ドリフト　SHIFT ニトロ　C 視点　マウス 視点移動　V 後方　R リセット　ESC ポーズ</div>
   </div>
 
   <div id="loading">
@@ -265,6 +268,7 @@ button:focus { outline: none; }
       <div><kbd>SPACE</kbd></div><div>ハンドブレーキ（ドリフト）</div>
       <div><kbd>SHIFT</kbd><kbd>N</kbd></div><div>ニトロ（ドリフト・ニアミス・スリップストリーム・テイクダウンで溜まる）</div>
       <div><kbd>C</kbd></div><div>視点切替：3人称(近) → 3人称(遠) → 1人称(コックピット) → 1人称(ボンネット)</div>
+      <div>マウス</div><div>視点移動（設定「マウス視点操作」：ドラッグ＝ボタンを押しながら動かす／マウスロック＝クリックでカーソルを固定して自由に見回す・ESC で解除）。操作をやめると自動で正面に戻ります</div>
       <div><kbd>V</kbd></div><div>後方確認（押している間）</div>
       <div><kbd>Q</kbd></div><div>【警察】スパイクストリップを後方に設置</div>
       <div><kbd>E</kbd></div><div>【警察】長押しで前方のレーサーにEMPロックオン</div>
